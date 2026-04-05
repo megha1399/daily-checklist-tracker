@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../services/auth.service';
 
@@ -12,6 +12,7 @@ import { AuthService } from '../services/auth.service';
 })
 export class RegisterComponent {
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   email = '';
   password = '';
   readonly error = signal<string | null>(null);
@@ -37,6 +38,9 @@ export class RegisterComponent {
       if (res.verificationSent) {
         this.verificationSentFor.set(res.email);
         this.password = '';
+      } else {
+        this.password = '';
+        await this.router.navigateByUrl('/');
       }
     } catch (e) {
       const he = e as HttpErrorResponse;

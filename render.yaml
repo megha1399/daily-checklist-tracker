@@ -26,7 +26,10 @@ services:
       # Required for email verification (register): your public site URL, no trailing slash.
       - key: FRONTEND_URL
         sync: false
-      # SMTP (e.g. Resend, SendGrid, Mailgun). See server/.env.example
+      # Set false on Render free (no SMTP). true + SMTP_* = verification email.
+      - key: ALLOW_EMAIL_VERIFICATION
+        sync: false
+      # SMTP — only when ALLOW_EMAIL_VERIFICATION=true (e.g. paid host / Cloud Run). See server/.env.example
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

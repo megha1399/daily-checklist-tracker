@@ -18,10 +18,9 @@ interface AuthResponse {
   user: AuthUser;
 }
 
-export interface RegisterQueuedResponse {
-  verificationSent: true;
-  email: string;
-}
+export type RegisterResponse =
+  | { verificationSent: true; email: string }
+  | { verificationSent: false; token: string; user: AuthUser };
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -85,12 +84,16 @@ export class AuthService {
     this.persistAuth(res);
   }
 
-  async register(email: string, password: string): Promise<RegisterQueuedResponse> {
+  async register(email: string, password: string): Promise<RegisterResponse> {
     const base = environment.apiBaseUrl;
     if (!base) throw new Error('API not configured');
-    return await firstValueFrom(
-      this.http.post<RegisterQueuedResponse>(`${base}/auth/register`, { email, password })
+    const res = await firstValueFrom(
+      this.http.post<RegisterResponse>(`${base}/auth/register`, { email, password })
     );
+    if (!res.verificationSent) {
+      this.persistAuth({ token: res.token, user: res.user });
+    }
+    return res;
   }
 
   async verifyEmail(token: string): Promise<void> {

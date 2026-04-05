@@ -24,15 +24,33 @@ const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const VERIFY_TOKEN_BYTES = 32;
 const VERIFY_EXPIRY_HOURS = Number(process.env.VERIFY_EXPIRY_HOURS) || 48;
 
+/** When true (ALLOW_EMAIL_VERIFICATION=true|1|yes), register queues pending row + sends verification email. Otherwise register creates the user immediately (no email). */
+function allowEmailVerification() {
+  const v = process.env.ALLOW_EMAIL_VERIFICATION?.trim().toLowerCase();
+  return v === 'true' || v === '1' || v === 'yes';
+}
+
 /** @type {pg.Pool} */
 let pool;
 
+/** Remove sslmode from URL so `pg` does not emit the verify-full alias warning; TLS is set via `ssl` below. */
+function postgresUrlWithoutSslMode(connectionString) {
+  try {
+    const u = new URL(connectionString.replace(/^postgresql:/i, 'http:'));
+    u.searchParams.delete('sslmode');
+    return `postgresql:${u.href.slice('http:'.length)}`;
+  } catch {
+    return connectionString;
+  }
+}
+
 function buildPgPool() {
-  const ssl =
-    DATABASE_URL.includes('sslmode=require') || DATABASE_URL.includes('neon.tech')
-      ? { rejectUnauthorized: true }
-      : undefined;
-  return new pg.Pool({ connectionString: DATABASE_URL, ssl });
+  const raw = DATABASE_URL;
+  const needsTls =
+    raw.includes('neon.tech') || /\bsslmode=(require|prefer|verify-ca|verify-full)\b/i.test(raw);
+  const connectionString = needsTls ? postgresUrlWithoutSslMode(raw) : raw;
+  const ssl = needsTls ? { rejectUnauthorized: true } : undefined;
+  return new pg.Pool({ connectionString, ssl });
 }
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -332,6 +350,20 @@ async function queueRegistration(email, password) {
   return { ok: true };
 }
 
+/** Create user immediately (no email verification). */
+async function registerUserDirect(email, password) {
+  const existing = await pool.query(`SELECT 1 FROM users WHERE email = $1`, [email]);
+  if (existing.rows.length > 0) return { error: 'email_taken' };
+  const hash = bcrypt.hashSync(password, 10);
+  const id = randomUUID();
+  await pool.query(`INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)`, [
+    id,
+    email,
+    hash,
+  ]);
+  return { user: { id, email } };
+}
+
 /** Create user from pending row; returns user or error code. */
 async function verifyRegistrationToken(token) {
   if (typeof token !== 'string' || token.length < 16) return { error: 'invalid_token' };
@@ -398,13 +430,24 @@ app.post('/api/auth/register', async (req, res) => {
     if (!isValidEmail(email) || typeof password !== 'string' || password.length < 8) {
       return res.status(400).json({ error: 'invalid_input' });
     }
-    if (process.env.NODE_ENV === 'production') {
+    const verifyByEmail = allowEmailVerification();
+    if (verifyByEmail && process.env.NODE_ENV === 'production') {
       if (!getMailTransport()) {
         return res.status(503).json({ error: 'email_not_configured' });
       }
       if (!FRONTEND_URL) {
         return res.status(503).json({ error: 'frontend_url_not_configured' });
       }
+    }
+    if (!verifyByEmail) {
+      const direct = await registerUserDirect(email, password);
+      if (direct.error === 'email_taken') return res.status(409).json({ error: 'email_taken' });
+      const jwt = signToken(direct.user.id);
+      return res.status(201).json({
+        verificationSent: false,
+        token: jwt,
+        user: { id: direct.user.id, email: direct.user.email },
+      });
     }
     const result = await queueRegistration(email, password);
     if (result.error === 'email_taken') return res.status(409).json({ error: 'email_taken' });
