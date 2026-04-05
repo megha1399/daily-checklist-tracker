@@ -33,6 +33,8 @@ services:
         sync: false
       - key: SMTP_SECURE
         sync: false
+      - key: SMTP_REQUIRE_TLS
+        sync: false
       - key: SMTP_USER
         sync: false
       - key: SMTP_PASS

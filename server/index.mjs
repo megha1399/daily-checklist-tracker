@@ -191,6 +191,9 @@ function getMailTransport() {
     host,
     port: Number(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURE === '1',
+    logger: true,
+    debug: true,
+    requireTLS: process.env.SMTP_REQUIRE_TLS === 'true' || process.env.SMTP_REQUIRE_TLS === '1',
     auth: user ? { user, pass } : undefined,
   });
 }
