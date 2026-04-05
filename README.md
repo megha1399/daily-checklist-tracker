@@ -57,6 +57,99 @@ node index.mjs
 
 See `server/.env.example` for `STATIC_DIR`, `HOST`, and `PORT`.
 
+## Deploy to Render (free Web Service)
+
+The repo includes **`render.yaml`** so Render can build the Angular app, install the API dependencies, and run **`node server/index.mjs`** with **`STATIC_DIR`** set. The site and **`/api`** share the same URL (same as local production).
+
+### Steps
+
+1. Push this project to **GitHub** (or GitLab / Bitbucket supported by Render).
+2. Open [Render Dashboard](https://dashboard.render.com) → **New +** → **Blueprint**.
+3. Connect the repository and select the branch. Render reads **`render.yaml`** and proposes a **Web Service** on the **Free** plan.
+4. Before or after the first deploy, open the service → **Environment** and add:
+   - **`DATABASE_URL`** — your Neon (or other Postgres) connection string.
+   - **`JWT_SECRET`** — a long random secret (do not use the dev default).
+
+   `STATIC_DIR`, `HOST`, `NODE_VERSION`, and `NODE_ENV` are already defined in `render.yaml`. **Do not** set `PORT` manually — Render injects it.
+
+5. Trigger a deploy. When it is green, open the **`.onrender.com` URL** and sign up / log in.
+
+### Free tier behavior
+
+- The service **spins down after idle**; the next visit can take **~30–60 seconds** to wake up.
+- Render’s policies (including whether a **payment method** is required on file for free services) can change — check [Render pricing](https://render.com/pricing) and signup flow.
+
+### Manual setup (without Blueprint)
+
+Create a **Web Service** from the repo and set:
+
+| Setting | Value |
+|--------|--------|
+| **Root directory** | *(repo root, leave empty)* |
+| **Build command** | `npm ci --include=dev && npm run build && npm ci --omit=dev --prefix server` |
+| **Start command** | `node server/index.mjs` |
+| **Plan** | Free |
+
+Add the same environment variables as above.
+
+## Deploy to Google Cloud Run (one service: SPA + API)
+
+The repo includes a **`Dockerfile`** that builds Angular, copies `dist/habit-tracker/browser` into the image, and runs `server/index.mjs` with `STATIC_DIR=/app/static`. **Neon** (or any Postgres) stays external via `DATABASE_URL`.
+
+### Prerequisites
+
+1. [Google Cloud account](https://cloud.google.com/) and a **project** with **billing** enabled (required for Cloud Run, even if usage stays in the free tier).
+2. [Google Cloud SDK (`gcloud`)](https://cloud.google.com/sdk/docs/install) installed locally.
+3. Enable APIs (once per project):
+
+   ```bash
+   gcloud config set project YOUR_PROJECT_ID
+   gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+   ```
+
+### Deploy from this directory
+
+```bash
+cd /path/to/daily-checklist-tracker
+
+gcloud run deploy daily-checklist-tracker \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated
+```
+
+Cloud Build detects the **Dockerfile** and uses it. When the command finishes, note the **Service URL** (HTTPS).
+
+### Required environment variables
+
+In [Cloud Run → your service → Edit & deploy new revision → Variables & secrets](https://console.cloud.google.com/run), add:
+
+| Name | Value |
+|------|--------|
+| `DATABASE_URL` | Your Neon Postgres URL (`sslmode=require` if Neon expects it). |
+| `JWT_SECRET` | Long random string (not the dev placeholder). |
+
+Do **not** set `PORT` yourself — Cloud Run sets it. `STATIC_DIR` is already set in the image.
+
+For sensitive values, prefer **Secret Manager** and mount them as secrets in Cloud Run (same names).
+
+### Smoke test
+
+Open the service URL, register a user, and confirm Routine/Today load. If the app shell loads but API calls fail, check Cloud Run **Logs** and that `DATABASE_URL` / `JWT_SECRET` are set on the **revision** you deployed.
+
+### Local Docker check (optional)
+
+```bash
+docker build -t dct-local .
+docker run --rm -p 8080:8080 \
+  -e PORT=8080 \
+  -e DATABASE_URL="postgresql://..." \
+  -e JWT_SECRET="your-secret" \
+  dct-local
+```
+
+Then open `http://localhost:8080`.
+
 ## Scripts
 
 | Command            | Description                          |
