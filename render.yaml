@@ -1,0 +1,24 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# After connecting the repo, set DATABASE_URL and JWT_SECRET in the Render dashboard
+# (Environment → your Web Service → Environment).
+
+services:
+  - type: web
+    name: daily-checklist-tracker
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build && npm ci --prefix server
+    startCommand: node server/index.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: "0.0.0.0"
+      - key: STATIC_DIR
+        value: dist/habit-tracker/browser
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
