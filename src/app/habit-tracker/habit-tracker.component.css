@@ -53,6 +53,31 @@
   margin-bottom: 1.25rem;
 }
 
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.app-logo {
+  flex-shrink: 0;
+  border-radius: 14px;
+  box-shadow: 0 6px 20px color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+.hero-titles {
+  min-width: 0;
+}
+
+.hero-titles .eyebrow {
+  margin-bottom: 0.35rem;
+}
+
+.hero-titles h1 {
+  margin-bottom: 0;
+}
+
 .eyebrow {
   margin: 0 0 0.35rem;
   font-size: 0.75rem;

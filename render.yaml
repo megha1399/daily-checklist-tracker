@@ -8,7 +8,7 @@ services:
     runtime: node
     plan: free
     # Render sets NODE_ENV=production during build; devDependencies hold @angular/cli (ng).
-    buildCommand: npm ci --include=dev && npm run build && npm ci --omit=dev --prefix server
+    buildCommand: npm ci --include=dev && npm run build && npm install --omit=dev --prefix server
     startCommand: node server/index.mjs
     envVars:
       - key: NODE_VERSION
@@ -22,4 +22,18 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
+        sync: false
+      # Required for email verification (register): your public site URL, no trailing slash.
+      - key: FRONTEND_URL
+        sync: false
+      # SMTP (e.g. Resend, SendGrid, Mailgun). See server/.env.example
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
         sync: false

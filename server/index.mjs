@@ -4,7 +4,8 @@ import express from 'express';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
+import nodemailer from 'nodemailer';
 import { existsSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -18,6 +19,10 @@ const HOST = process.env.HOST?.trim() || '0.0.0.0';
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-set-JWT_SECRET-in-production';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
+/** Public site URL for verification links (no trailing slash), e.g. https://daily-checklist-tracker.onrender.com */
+const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+const VERIFY_TOKEN_BYTES = 32;
+const VERIFY_EXPIRY_HOURS = Number(process.env.VERIFY_EXPIRY_HOURS) || 48;
 
 /** @type {pg.Pool} */
 let pool;
@@ -164,7 +169,48 @@ async function ensureSchema() {
       PRIMARY KEY (user_id, date_key, activity_id),
       FOREIGN KEY (user_id, activity_id) REFERENCES activities(user_id, id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS pending_registrations (
+      email TEXT PRIMARY KEY,
+      password_hash TEXT NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
+}
+
+function getMailTransport() {
+  const host = process.env.SMTP_HOST?.trim();
+  if (!host) return null;
+  const user = (process.env.SMTP_USER ?? '').trim();
+  const pass = (process.env.SMTP_PASS ?? '').trim();
+  if (user && !pass && process.env.NODE_ENV !== 'production') {
+    console.warn('[email] SMTP_USER is set but SMTP_PASS is empty — Gmail needs an app password in SMTP_PASS.');
+  }
+  return nodemailer.createTransport({
+    host,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURE === '1',
+    auth: user ? { user, pass } : undefined,
+  });
+}
+
+async function sendVerificationEmail(toEmail, token) {
+  const verifyPath = `/verify-email?token=${encodeURIComponent(token)}`;
+  const link = FRONTEND_URL ? `${FRONTEND_URL}${verifyPath}` : verifyPath;
+  const from = process.env.EMAIL_FROM?.trim() || process.env.SMTP_USER?.trim() || 'noreply@localhost';
+  const transport = getMailTransport();
+  if (!transport) {
+    console.warn(`[email] SMTP not configured. Verification link for ${toEmail}:\n${link}`);
+    return;
+  }
+  await transport.sendMail({
+    from,
+    to: toEmail,
+    subject: 'Verify your Daily Checklist Tracker account',
+    text: `Open this link to verify your email and activate your account (expires in ${VERIFY_EXPIRY_HOURS} hours):\n\n${link}\n`,
+    html: `<p>Verify your email to finish signing up for <strong>Daily Checklist Tracker</strong>.</p><p><a href="${link}">Verify email</a></p><p>Or paste this URL into your browser:</p><p style="word-break:break-all">${link}</p><p>This link expires in ${VERIFY_EXPIRY_HOURS} hours.</p>`,
+  });
 }
 
 async function readState(userId) {
@@ -259,19 +305,65 @@ async function initDb() {
   console.log('PostgreSQL connected');
 }
 
-async function registerUser(email, password) {
-  const id = randomUUID();
+/** Queue signup: store hash + token, send email. Fails if email already registered or verified user exists. */
+async function queueRegistration(email, password) {
+  const existing = await pool.query(`SELECT 1 FROM users WHERE email = $1`, [email]);
+  if (existing.rows.length > 0) return { error: 'email_taken' };
+
   const hash = bcrypt.hashSync(password, 10);
+  const token = randomBytes(VERIFY_TOKEN_BYTES).toString('hex');
+  const expiresAt = new Date(Date.now() + VERIFY_EXPIRY_HOURS * 60 * 60 * 1000);
+
+  await pool.query(
+    `INSERT INTO pending_registrations (email, password_hash, token, expires_at)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (email) DO UPDATE SET
+       password_hash = EXCLUDED.password_hash,
+       token = EXCLUDED.token,
+       expires_at = EXCLUDED.expires_at,
+       created_at = NOW()`,
+    [email, hash, token, expiresAt.toISOString()]
+  );
+
+  await sendVerificationEmail(email, token);
+  return { ok: true };
+}
+
+/** Create user from pending row; returns user or error code. */
+async function verifyRegistrationToken(token) {
+  if (typeof token !== 'string' || token.length < 16) return { error: 'invalid_token' };
+
+  const client = await pool.connect();
   try {
-    await pool.query(`INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)`, [
-      id,
-      email,
-      hash,
-    ]);
-    return { id, email };
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `DELETE FROM pending_registrations WHERE token = $1 AND expires_at > NOW() RETURNING email, password_hash`,
+      [token]
+    );
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { error: 'invalid_or_expired_token' };
+    }
+    const { email, password_hash } = rows[0];
+    const id = randomUUID();
+    try {
+      await client.query(`INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)`, [
+        id,
+        email,
+        password_hash,
+      ]);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      if (e.code === '23505') return { error: 'email_taken' };
+      throw e;
+    }
+    await client.query('COMMIT');
+    return { user: { id, email } };
   } catch (e) {
-    if (e.code === '23505') return null;
+    await client.query('ROLLBACK');
     throw e;
+  } finally {
+    client.release();
   }
 }
 
@@ -279,10 +371,17 @@ async function loginUser(email, password) {
   const { rows } = await pool.query(`SELECT id, email, password_hash FROM users WHERE email = $1`, [
     email,
   ]);
-  if (rows.length === 0) return null;
-  const u = rows[0];
-  if (!bcrypt.compareSync(password, u.password_hash)) return null;
-  return { id: u.id, email: u.email };
+  if (rows.length > 0) {
+    const u = rows[0];
+    if (!bcrypt.compareSync(password, u.password_hash)) return { error: 'invalid_credentials' };
+    return { user: { id: u.id, email: u.email } };
+  }
+  const pend = await pool.query(
+    `SELECT 1 FROM pending_registrations WHERE email = $1 AND expires_at > NOW()`,
+    [email]
+  );
+  if (pend.rows.length > 0) return { error: 'pending_verification' };
+  return { error: 'invalid_credentials' };
 }
 
 const app = express();
@@ -296,13 +395,38 @@ app.post('/api/auth/register', async (req, res) => {
     if (!isValidEmail(email) || typeof password !== 'string' || password.length < 8) {
       return res.status(400).json({ error: 'invalid_input' });
     }
-    const user = await registerUser(email, password);
-    if (!user) return res.status(409).json({ error: 'email_taken' });
-    const token = signToken(user.id);
-    res.status(201).json({ token, user: { id: user.id, email: user.email } });
+    if (process.env.NODE_ENV === 'production') {
+      if (!getMailTransport()) {
+        return res.status(503).json({ error: 'email_not_configured' });
+      }
+      if (!FRONTEND_URL) {
+        return res.status(503).json({ error: 'frontend_url_not_configured' });
+      }
+    }
+    const result = await queueRegistration(email, password);
+    if (result.error === 'email_taken') return res.status(409).json({ error: 'email_taken' });
+    res.status(201).json({ verificationSent: true, email });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'register_failed' });
+  }
+});
+
+app.post('/api/auth/verify-email', async (req, res) => {
+  try {
+    const token = req.body?.token;
+    const result = await verifyRegistrationToken(token);
+    if (result.error === 'invalid_token' || result.error === 'invalid_or_expired_token') {
+      return res.status(400).json({ error: result.error });
+    }
+    if (result.error === 'email_taken') {
+      return res.status(409).json({ error: 'email_taken' });
+    }
+    const jwt = signToken(result.user.id);
+    res.status(201).json({ token: jwt, user: { id: result.user.id, email: result.user.email } });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'verify_failed' });
   }
 });
 
@@ -313,10 +437,15 @@ app.post('/api/auth/login', async (req, res) => {
     if (!isValidEmail(email) || typeof password !== 'string') {
       return res.status(400).json({ error: 'invalid_input' });
     }
-    const user = await loginUser(email, password);
-    if (!user) return res.status(401).json({ error: 'invalid_credentials' });
-    const token = signToken(user.id);
-    res.json({ token, user: { id: user.id, email: user.email } });
+    const result = await loginUser(email, password);
+    if (result.error === 'pending_verification') {
+      return res.status(403).json({ error: 'pending_verification' });
+    }
+    if (result.error === 'invalid_credentials') {
+      return res.status(401).json({ error: 'invalid_credentials' });
+    }
+    const token = signToken(result.user.id);
+    res.json({ token, user: { id: result.user.id, email: result.user.email } });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'login_failed' });

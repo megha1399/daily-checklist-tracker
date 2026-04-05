@@ -1,9 +1,26 @@
 <div class="auth-page">
   <div class="auth-card panel">
-    <p class="auth-product">Daily Checklist Tracker</p>
-    <h1>Create account</h1>
+    <header class="auth-header">
+      <img class="auth-logo" src="/logo.svg" width="40" height="40" alt="" />
+      <div class="auth-header-text">
+        <p class="auth-product">Daily Checklist Tracker</p>
+        <h1>Create account</h1>
+      </div>
+    </header>
     <p class="auth-lead">Each account has its own weekly plan, daily checklists, and progress history.</p>
 
+    @if (verificationSentFor()) {
+      <div class="auth-success" role="status">
+        <p class="auth-success-title">Check your email</p>
+        <p class="auth-lead">
+          We sent a verification link to <strong>{{ verificationSentFor() }}</strong>. Open it to finish creating your
+          account, then you can log in.
+        </p>
+        <p class="auth-footer">
+          <a routerLink="/login">Back to log in</a>
+        </p>
+      </div>
+    } @else {
     @if (error()) {
       <p class="auth-error" role="alert">{{ error() }}</p>
     }
@@ -40,5 +57,6 @@
       Already have an account?
       <a routerLink="/login">Log in</a>
     </p>
+    }
   </div>
 </div>

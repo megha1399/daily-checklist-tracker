@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="logoBg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3a8a75"/>
+      <stop offset="1" stop-color="#1e483c"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#logoBg)"/>
+  <g fill="none" stroke="#f2faf7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="13" y="13" width="11" height="11" rx="3"/>
+    <path d="M16.2 18.5l2.2 2.2L22.5 15"/>
+    <rect x="29" y="16" width="22" height="5" rx="2.5" fill="#f2faf7" stroke="none"/>
+    <rect x="13" y="29" width="11" height="11" rx="3"/>
+    <path d="M16.2 34.5l2.2 2.2L22.5 31"/>
+    <rect x="29" y="32" width="20" height="5" rx="2.5" fill="#f2faf7" stroke="none"/>
+    <rect x="13" y="45" width="11" height="11" rx="3"/>
+    <rect x="29" y="48" width="16" height="5" rx="2.5" fill="#f2faf7" stroke="none" opacity="0.45"/>
+  </g>
+</svg>

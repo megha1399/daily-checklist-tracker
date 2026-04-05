@@ -4,7 +4,11 @@ import { AuthService } from '../services/auth.service';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
-  if (req.url.includes('/auth/login') || req.url.includes('/auth/register')) {
+  if (
+    req.url.includes('/auth/login') ||
+    req.url.includes('/auth/register') ||
+    req.url.includes('/auth/verify-email')
+  ) {
     return next(req);
   }
   const t = auth.token();

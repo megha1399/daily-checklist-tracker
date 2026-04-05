@@ -35,7 +35,9 @@ export class LoginComponent {
       await this.router.navigateByUrl('/');
     } catch (e) {
       const he = e as HttpErrorResponse;
-      if (he.status === 401) this.error.set('Invalid email or password.');
+      if (he.status === 403 && (he.error as { error?: string })?.error === 'pending_verification') {
+        this.error.set('Check your email and verify your account before logging in.');
+      } else if (he.status === 401) this.error.set('Invalid email or password.');
       else if (he.status === 0) this.error.set('Cannot reach the API. Is the server running?');
       else this.error.set('Something went wrong. Try again.');
     } finally {

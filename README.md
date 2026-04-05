@@ -69,10 +69,21 @@ The repo includes **`render.yaml`** so Render can build the Angular app, install
 4. Before or after the first deploy, open the service → **Environment** and add:
    - **`DATABASE_URL`** — your Neon (or other Postgres) connection string.
    - **`JWT_SECRET`** — a long random secret (do not use the dev default).
+   - **`FRONTEND_URL`** — public site URL with **no** trailing slash, e.g. `https://daily-checklist-tracker.onrender.com` (used in verification emails).
+   - **SMTP** — `SMTP_HOST`, `SMTP_PORT` (often `587`), `SMTP_USER`, `SMTP_PASS`, and **`EMAIL_FROM`** (shown as the sender). Without these, **register returns 503** in production (`NODE_ENV=production`). See `server/.env.example` and the **Email verification** section below.
 
    `STATIC_DIR`, `HOST`, `NODE_VERSION`, and `NODE_ENV` are already defined in `render.yaml`. **Do not** set `PORT` manually — Render injects it.
 
-5. Trigger a deploy. When it is green, open the **`.onrender.com` URL** and sign up / log in.
+5. Trigger a deploy. When it is green, open the **`.onrender.com` URL**. **Sign up** triggers a verification email; open the link to create the account, then use **Log in**.
+
+### Email verification (register)
+
+New accounts are **not** created until the user opens the link in the verification email (`POST /api/auth/verify-email`). Pending rows live in table **`pending_registrations`**.
+
+- **Production** requires **`FRONTEND_URL`** + working **SMTP** (see `server/.env.example`). Providers such as [Resend](https://resend.com/docs/send-with-nodejs-smtp), SendGrid, or Mailgun expose SMTP credentials.
+- **Local dev** (no `NODE_ENV=production`): registration still works; if SMTP is unset, the verification URL is **printed in the API server log** instead of emailed.
+
+After pulling changes, run **`npm install --prefix server`** once so `nodemailer` is installed locally (Render’s build uses `npm install` for the server step).
 
 ### Free tier behavior
 
@@ -86,7 +97,7 @@ Create a **Web Service** from the repo and set:
 | Setting | Value |
 |--------|--------|
 | **Root directory** | *(repo root, leave empty)* |
-| **Build command** | `npm ci --include=dev && npm run build && npm ci --omit=dev --prefix server` |
+| **Build command** | `npm ci --include=dev && npm run build && npm install --omit=dev --prefix server` |
 | **Start command** | `node server/index.mjs` |
 | **Plan** | Free |
 

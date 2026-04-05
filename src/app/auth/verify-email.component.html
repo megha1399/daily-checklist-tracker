@@ -1,0 +1,24 @@
+<div class="auth-page">
+  <div class="auth-card panel">
+    <header class="auth-header">
+      <img class="auth-logo" src="/logo.svg" width="40" height="40" alt="" />
+      <div class="auth-header-text">
+        <p class="auth-product">Daily Checklist Tracker</p>
+        <h1>Verify email</h1>
+      </div>
+    </header>
+
+    @if (state() === 'loading') {
+      <p class="auth-lead">Confirming your email…</p>
+    } @else if (state() === 'success') {
+      <p class="auth-lead">{{ message() }}</p>
+    } @else if (state() === 'error') {
+      <p class="auth-error" role="alert">{{ message() }}</p>
+      <p class="auth-footer" style="margin-top: 1rem">
+        <a routerLink="/register">Sign up again</a>
+        ·
+        <a routerLink="/login">Log in</a>
+      </p>
+    }
+  </div>
+</div>
