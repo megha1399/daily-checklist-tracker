@@ -1,0 +1,397 @@
+<div class="page">
+  @if (useAccounts) {
+    <div class="user-bar">
+      <span class="user-email">{{ auth.user()?.email }}</span>
+      <button type="button" class="btn ghost btn-small" (click)="logout()">Log out</button>
+    </div>
+  }
+
+  <header class="hero">
+    <p class="eyebrow">Plan, then check in</p>
+    <h1>Daily Checklist Tracker</h1>
+    <p class="sub">
+      Set up a weekly routine, work through your daily checklist, and add one-off tasks on the Today tab when you need them.
+    </p>
+  </header>
+
+  @if (routine.apiSyncMessage()) {
+    <div class="sync-alert panel" role="alert">
+      <p>{{ routine.apiSyncMessage() }}</p>
+      <p class="sync-hint">
+        Check-offs are stored in Neon table <code>completions</code> (not <code>activities</code>). They only sync when the local API can save.
+      </p>
+    </div>
+  }
+
+  <nav class="tabs panel" aria-label="Main sections">
+    <button
+      type="button"
+      class="tab"
+      [class.active]="section() === 'routine'"
+      (click)="setSection('routine')"
+      [attr.aria-current]="section() === 'routine' ? 'page' : null"
+    >
+      Routine
+    </button>
+    <button
+      type="button"
+      class="tab"
+      [class.active]="section() === 'track'"
+      (click)="setSection('track')"
+      [attr.aria-current]="section() === 'track' ? 'page' : null"
+    >
+      Today
+    </button>
+    <button
+      type="button"
+      class="tab"
+      [class.active]="section() === 'report'"
+      (click)="setSection('report')"
+      [attr.aria-current]="section() === 'report' ? 'page' : null"
+    >
+      Progress
+    </button>
+  </nav>
+
+  @if (section() === 'routine') {
+    <section class="routine-section" aria-label="Weekly routine">
+      <p class="hint">
+        Add what you want to do on each day. The same list repeats every week for that weekday.
+      </p>
+
+      <div class="weekday-grid">
+        @for (w of weekdayIndices(); track w) {
+          <article class="weekday-card panel">
+            <h2 class="weekday-title">{{ routine.weekdayLabel(w) }}</h2>
+
+            @if (routine.byWeekday()[w].length === 0) {
+              <p class="weekday-empty">No activities yet.</p>
+            } @else {
+              <ul class="activity-def-list" role="list">
+                @for (a of routine.byWeekday()[w]; track a.id) {
+                  <li class="activity-def-row">
+                    <span class="activity-name">{{ a.name }}</span>
+                    <button
+                      type="button"
+                      class="btn ghost danger btn-small"
+                      (click)="routine.removeRoutineActivity(w, a.id)"
+                      [attr.aria-label]="'Remove ' + a.name + ' from ' + routine.weekdayLabel(w)"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+
+            <form class="add-form" (ngSubmit)="addActivity(w)">
+              <label class="sr-only" [attr.for]="'act-' + w">Add activity for {{ routine.weekdayLabel(w) }}</label>
+              <input
+                [id]="'act-' + w"
+                type="text"
+                [(ngModel)]="draftByWeekday[w]"
+                [name]="'draft' + w"
+                [placeholder]="'Add for ' + routine.weekdayLabel(w)"
+                autocomplete="off"
+                maxlength="80"
+              />
+              <button
+                type="submit"
+                class="btn primary btn-small"
+                [disabled]="!draftByWeekday[w].trim() || weekdayAddBusy() === w"
+              >
+                Add
+              </button>
+            </form>
+          </article>
+        }
+      </div>
+    </section>
+  } @else if (section() === 'report') {
+    <section class="report-section" aria-label="Progress reports">
+      <div class="report-subtabs panel">
+        <button
+          type="button"
+          class="tab small-tab"
+          [class.active]="reportMode() === 'weekly'"
+          (click)="setReportMode('weekly')"
+        >
+          Weekly
+        </button>
+        <button
+          type="button"
+          class="tab small-tab"
+          [class.active]="reportMode() === 'monthly'"
+          (click)="setReportMode('monthly')"
+        >
+          Monthly
+        </button>
+      </div>
+
+      @if (reportMode() === 'weekly') {
+        @let ws = weekReportSummary();
+        <div class="date-toolbar panel report-toolbar">
+          <button type="button" class="btn ghost" (click)="shiftReportWeek(-1)" aria-label="Previous week">←</button>
+          <div class="date-block">
+            <p class="date-line">{{ weekReportLabel() }}</p>
+            <p class="date-sub">Mon–Sun · completion vs scheduled</p>
+          </div>
+          <button type="button" class="btn ghost" (click)="shiftReportWeek(1)" aria-label="Next week">→</button>
+        </div>
+        @if (!isReportCurrentWeek()) {
+          <button type="button" class="btn ghost jump-today" (click)="goReportThisWeek()">This week</button>
+        }
+
+        <div class="report-summary panel">
+          <h2 class="report-summary-title">Week summary</h2>
+          @if (ws.daysWithRoutine === 0) {
+            <p class="report-muted">No scheduled activities on these days — set up your routine first.</p>
+          } @else {
+            <ul class="report-stat-list">
+              <li>
+                <span class="stat-label">Days with a routine</span>
+                <span class="stat-value">{{ ws.daysWithRoutine }}</span>
+              </li>
+              <li>
+                <span class="stat-label">Perfect days (100%)</span>
+                <span class="stat-value">{{ ws.perfectDays }}</span>
+              </li>
+              <li>
+                <span class="stat-label">Check-ins done</span>
+                <span class="stat-value">{{ ws.totalCompleted }} / {{ ws.totalExpected }}</span>
+              </li>
+              <li>
+                <span class="stat-label">Overall rate</span>
+                <span class="stat-value">{{
+                  ws.totalExpected ? ((100 * ws.totalCompleted) / ws.totalExpected | number: '1.0-0') + '%' : '—'
+                }}</span>
+              </li>
+            </ul>
+          }
+        </div>
+
+        <ul class="report-day-list" role="list">
+          @for (row of weekReportRows(); track row.dateKey) {
+            <li class="report-day panel">
+              <div class="report-day-top">
+                <span class="report-day-label">{{ row.shortLabel }}</span>
+                @if (row.total === 0) {
+                  <span class="report-badge muted">No routine</span>
+                } @else if (row.perfect) {
+                  <span class="report-badge success">Complete</span>
+                } @else {
+                  <span class="report-badge">{{ row.done }} / {{ row.total }}</span>
+                }
+              </div>
+              @if (row.total > 0) {
+                <div class="progress-bar thin" role="progressbar" [attr.aria-valuenow]="row.done" [attr.aria-valuemax]="row.total">
+                  <div class="progress-fill" [style.width.%]="row.pct"></div>
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      } @else {
+        @let ms = monthReportSummary();
+        <div class="date-toolbar panel report-toolbar">
+          <button type="button" class="btn ghost" (click)="shiftReportMonth(-1)" aria-label="Previous month">←</button>
+          <div class="date-block">
+            <p class="date-line">{{ monthReportTitle() }}</p>
+            <p class="date-sub">Calendar · darker = more complete</p>
+          </div>
+          <button type="button" class="btn ghost" (click)="shiftReportMonth(1)" aria-label="Next month">→</button>
+        </div>
+        @if (!isReportCurrentMonth()) {
+          <button type="button" class="btn ghost jump-today" (click)="goReportThisMonth()">This month</button>
+        }
+
+        <div class="report-summary panel">
+          <h2 class="report-summary-title">Month summary</h2>
+          @if (ms.daysWithRoutine === 0) {
+            <p class="report-muted">No scheduled activities this month on days you track.</p>
+          } @else {
+            <ul class="report-stat-list">
+              <li>
+                <span class="stat-label">Active days</span>
+                <span class="stat-value">{{ ms.daysWithRoutine }}</span>
+              </li>
+              <li>
+                <span class="stat-label">Perfect days</span>
+                <span class="stat-value">{{ ms.perfectDays }}</span>
+              </li>
+              <li>
+                <span class="stat-label">Check-ins done</span>
+                <span class="stat-value">{{ ms.totalCompleted }} / {{ ms.totalExpected }}</span>
+              </li>
+              <li>
+                <span class="stat-label">Overall rate</span>
+                <span class="stat-value">{{
+                  ms.totalExpected ? ((100 * ms.totalCompleted) / ms.totalExpected | number: '1.0-0') + '%' : '—'
+                }}</span>
+              </li>
+            </ul>
+          }
+        </div>
+
+        <div class="cal-legend">
+          <span><i class="dot none"></i> No routine</span>
+          <span><i class="dot zero"></i> 0%</span>
+          <span><i class="dot partial"></i> Partial</span>
+          <span><i class="dot full"></i> 100%</span>
+        </div>
+
+        <div class="cal panel">
+          <div class="cal-head">
+            @for (h of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; track h) {
+              <span class="cal-h">{{ h }}</span>
+            }
+          </div>
+          @for (week of monthGrid(); track $index) {
+            <div class="cal-row">
+              @for (cell of week; track $index) {
+                @if (cell) {
+                  <div
+                    [class]="cellClass(cell)"
+                    [attr.title]="cell + ': ' + routine.progressForDate(cell).done + '/' + routine.progressForDate(cell).total"
+                  >
+                    <span class="cal-day-num">{{ cell.slice(8, 10) }}</span>
+                  </div>
+                } @else {
+                  <div class="cal-cell empty"></div>
+                }
+              }
+            </div>
+          }
+        </div>
+      }
+    </section>
+  } @else {
+    <section class="track-section" aria-label="Daily check-in">
+      @let dayKey = selectedDateKey();
+      @let acts = routine.activitiesForDate(dayKey);
+      @let p = routine.progressForDate(dayKey);
+      @let weeklySkips = routine.hiddenWeeklySkipsForDate(dayKey);
+
+      <div class="date-toolbar panel">
+        <button type="button" class="btn ghost" (click)="shiftDay(-1)" aria-label="Previous day">
+          ←
+        </button>
+        <div class="date-block">
+          <p class="date-line">{{ formattedDate(dayKey) }}</p>
+          <p class="date-sub">{{ weekdayForSelectedDate() }} routine</p>
+        </div>
+        <button type="button" class="btn ghost" (click)="shiftDay(1)" aria-label="Next day">
+          →
+        </button>
+      </div>
+
+      @if (!isSelectedToday()) {
+        <button type="button" class="btn ghost jump-today" (click)="goToday()">Jump to today</button>
+      }
+
+      <p class="hint track-hint">
+        Add a task below for this date only — it will not change your weekly Routine.
+        <strong>Remove</strong> removes one-day tasks only.
+        <strong>Skip this day</strong> hides a repeating task for this calendar day only; use
+        <strong>Restore</strong> below to bring it back.
+      </p>
+
+      <form class="one-day-add panel" (ngSubmit)="addOneDayForSelected()">
+        <label class="sr-only" for="one-day-task">Add a task for this date only</label>
+        <input
+          id="one-day-task"
+          type="text"
+          [(ngModel)]="draftOneDay"
+          name="oneDayDraft"
+          placeholder="One-off task for this day…"
+          autocomplete="off"
+          maxlength="80"
+        />
+        <button
+          type="submit"
+          class="btn primary btn-small"
+          [disabled]="!draftOneDay.trim() || oneDayAddBusy()"
+        >
+          Add for this day
+        </button>
+      </form>
+
+      @if (acts.length === 0) {
+        <div class="empty panel">
+          <p>
+            Nothing scheduled yet. Use the field above for a one-time task, or set up repeating tasks in
+            <button type="button" class="linkish" (click)="setSection('routine')">Routine</button>
+            for {{ weekdayForSelectedDate() }}.
+          </p>
+        </div>
+      } @else {
+        <div class="progress panel">
+          <div class="progress-top">
+            <span class="progress-label">Progress</span>
+            <span class="progress-count">{{ p.done }} / {{ p.total }}</span>
+          </div>
+          <div class="progress-bar" role="progressbar" [attr.aria-valuenow]="p.done" [attr.aria-valuemax]="p.total">
+            <div class="progress-fill" [style.width.%]="p.total ? (100 * p.done) / p.total : 0"></div>
+          </div>
+        </div>
+
+        <ul class="check-list" role="list">
+          @for (a of acts; track a.id) {
+            <li class="check-row panel">
+              <div class="check-row-inner">
+                <label class="check-label">
+                  <input
+                    type="checkbox"
+                    [checked]="routine.isDone(dayKey, a.id)"
+                    (change)="routine.toggleDone(dayKey, a.id)"
+                  />
+                  <span class="check-text" [class.checked]="routine.isDone(dayKey, a.id)">{{ a.name }}</span>
+                </label>
+                @if (a.isOneDay) {
+                  <button
+                    type="button"
+                    class="btn ghost danger btn-small one-day-remove"
+                    (click)="routine.removeOneDayActivity(dayKey, a.id)"
+                    [attr.aria-label]="'Remove one-day task: ' + a.name"
+                  >
+                    Remove
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="btn ghost btn-small weekly-skip-btn"
+                    (click)="routine.hideWeeklyActivityForDate(dayKey, a.id)"
+                    [attr.aria-label]="'Skip repeating task for this day only: ' + a.name"
+                  >
+                    Skip this day
+                  </button>
+                }
+              </div>
+            </li>
+          }
+        </ul>
+      }
+
+      @if (weeklySkips.length > 0) {
+        <div class="panel skip-restore-panel" aria-label="Repeating tasks skipped for this date">
+          <p class="skip-restore-title">Skipped for this date (still on your weekly routine)</p>
+          <ul class="skip-restore-list">
+            @for (h of weeklySkips; track h.activityId) {
+              <li class="skip-restore-row">
+                <span class="skip-restore-name">{{ h.name }}</span>
+                <button
+                  type="button"
+                  class="btn ghost btn-small"
+                  (click)="routine.restoreWeeklyActivityForDate(dayKey, h.activityId)"
+                  [attr.aria-label]="'Restore repeating task for this day: ' + h.name"
+                >
+                  Restore
+                </button>
+              </li>
+            }
+          </ul>
+        </div>
+      }
+    </section>
+  }
+</div>

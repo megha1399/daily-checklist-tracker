@@ -1,0 +1,42 @@
+<div class="auth-page">
+  <div class="auth-card panel">
+    <p class="auth-product">Daily Checklist Tracker</p>
+    <h1>Log in</h1>
+    <p class="auth-lead">Access your routine, daily checklist, and history.</p>
+
+    @if (error()) {
+      <p class="auth-error" role="alert">{{ error() }}</p>
+    }
+
+    <form class="auth-form" (ngSubmit)="submit()">
+      <label class="auth-label" for="login-email">Email</label>
+      <input
+        id="login-email"
+        type="email"
+        name="email"
+        [(ngModel)]="email"
+        autocomplete="username"
+        required
+      />
+
+      <label class="auth-label" for="login-password">Password</label>
+      <input
+        id="login-password"
+        type="password"
+        name="password"
+        [(ngModel)]="password"
+        autocomplete="current-password"
+        required
+      />
+
+      <button type="submit" class="btn primary auth-submit" [disabled]="busy()">
+        {{ busy() ? 'Please wait…' : 'Log in' }}
+      </button>
+    </form>
+
+    <p class="auth-footer">
+      No account?
+      <a routerLink="/register">Create one</a>
+    </p>
+  </div>
+</div>

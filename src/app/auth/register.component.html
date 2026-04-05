@@ -1,0 +1,44 @@
+<div class="auth-page">
+  <div class="auth-card panel">
+    <p class="auth-product">Daily Checklist Tracker</p>
+    <h1>Create account</h1>
+    <p class="auth-lead">Each account has its own weekly plan, daily checklists, and progress history.</p>
+
+    @if (error()) {
+      <p class="auth-error" role="alert">{{ error() }}</p>
+    }
+
+    <form class="auth-form" (ngSubmit)="submit()">
+      <label class="auth-label" for="reg-email">Email</label>
+      <input
+        id="reg-email"
+        type="email"
+        name="email"
+        [(ngModel)]="email"
+        autocomplete="username"
+        required
+      />
+
+      <label class="auth-label" for="reg-password">Password</label>
+      <input
+        id="reg-password"
+        type="password"
+        name="password"
+        [(ngModel)]="password"
+        autocomplete="new-password"
+        required
+        minlength="8"
+      />
+      <p class="auth-hint">At least 8 characters.</p>
+
+      <button type="submit" class="btn primary auth-submit" [disabled]="busy()">
+        {{ busy() ? 'Please wait…' : 'Sign up' }}
+      </button>
+    </form>
+
+    <p class="auth-footer">
+      Already have an account?
+      <a routerLink="/login">Log in</a>
+    </p>
+  </div>
+</div>
