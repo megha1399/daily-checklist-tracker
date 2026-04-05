@@ -7,7 +7,8 @@ services:
     name: daily-checklist-tracker
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run build && npm ci --prefix server
+    # Render sets NODE_ENV=production during build; devDependencies hold @angular/cli (ng).
+    buildCommand: npm ci --include=dev && npm run build && npm ci --omit=dev --prefix server
     startCommand: node server/index.mjs
     envVars:
       - key: NODE_VERSION
